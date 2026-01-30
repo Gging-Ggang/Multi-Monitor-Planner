@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Monitor Planner</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.150.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <!-- 사이드바 -->
+        <div id="sidebar">
+            <div id="resizer"></div> <!-- 리사이즈 핸들 -->
+
+            <!-- 고정 영역: 제목, 데스크, 설정 -->
+            <div id="sidebar-fixed">
+                <h1 id="app-title" data-i18n="appTitle">Multi-Monitor Planner</h1>
+                
+                <div class="divider"></div> <!-- 구분선 -->
+
+                <!-- Desk Setup -->
+                <h2 data-i18n="deskSetup">Desk setup</h2>
+                <div class="desk-setup-row">
+                    <div class="desk-input-group">
+                        <label data-i18n="width">너비(mm)</label>
+                        <input type="number" id="desk-width" value="1600">
+                    </div>
+                    <div class="desk-input-group">
+                        <label data-i18n="depth">깊이(mm)</label>
+                        <input type="number" id="desk-depth" value="800">
+                    </div>
+                    <!-- 색상 입력 (너비/깊이와 높이 동일하게 맞춤) -->
+                    <div class="desk-input-group" style="flex: 0 0 auto;">
+                        <label data-i18n="color">색상</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="desk-color" value="#ffffff">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div> <!-- 구분선 -->
+
+                <!-- Settings -->
+                <h2 data-i18n="settings">Settings</h2>
+                
+                <!-- Language Select -->
+                <div class="control-group" style="margin-bottom: 15px;">
+                    <label data-i18n="language">Language</label>
+                    <select id="language-select">
+                        <option value="ko">한국어</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label data-i18n="snap">Snap</label>
+                    
+                    <!-- Move Snap: min 0 -->
+                    <div class="setting-item">
+                        <input type="checkbox" id="snap-move-check">
+                        <span class="setting-label">Move</span>
+                        <input type="range" id="snap-move-range" min="0" max="100" step="10" value="30">
+                        <span class="setting-value" id="snap-move-val">30mm</span>
+                    </div>
+
+                    <!-- Rotate Snap: min 0 -->
+                    <div class="setting-item">
+                        <input type="checkbox" id="snap-rotate-check">
+                        <span class="setting-label">Rotate</span>
+                        <input type="range" id="snap-rotate-range" min="0" max="90" step="5" value="30">
+                        <span class="setting-value" id="snap-rotate-val">30°</span>
+                    </div>
+                </div>
+                
+                <div class="divider"></div> <!-- 구분선 -->
+                
+                <h2 data-i18n="monitors">Monitors</h2>
+            </div>
+
+            <!-- 스크롤 영역: 모니터 리스트 -->
+            <div id="monitor-scroll-area">
+                <div id="monitor-list">
+                    <!-- JS로 아이템 생성됨 -->
+                </div>
+                
+                <button id="add-monitor-btn" class="btn-primary" data-i18n="addMonitor">+ Add Monitor</button>
+            </div>
+        </div>
+
+        <!-- 3D 캔버스 -->
+        <div id="canvas-container"></div>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
