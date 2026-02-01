@@ -7,11 +7,11 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 // ==========================================
 class MonitorFactory {
     static createMonitor(config) {
-        let { id, name, inches, ratioW, ratioH, curvature, isPortrait, locked } = config;
+        const { id, name, curvature, isPortrait, locked } = config;
 
-        inches = Math.max(1, parseFloat(inches) || 27);
-        ratioW = Math.max(0.1, parseFloat(ratioW) || 16);
-        ratioH = Math.max(0.1, parseFloat(ratioH) || 9);
+        const inches = Math.max(1, parseFloat(config.inches) || 27);
+        const ratioW = Math.max(0.1, parseFloat(config.ratioW) || 16);
+        const ratioH = Math.max(0.1, parseFloat(config.ratioH) || 9);
 
         const diagonalMm = inches * 25.4;
         const ratio = ratioW / ratioH;
@@ -20,13 +20,8 @@ class MonitorFactory {
 
         const radius = parseFloat(curvature);
         
-        let isValidCurvature = false;
-        if (radius > 0 && radius < 10000) {
-            const perimeter = 2 * Math.PI * radius;
-            if (widthMm < perimeter * 0.95) {
-                isValidCurvature = true;
-            }
-        }
+        const perimeter = 2 * Math.PI * radius;
+        const isValidCurvature = (radius > 0 && radius < 10000) && (widthMm < perimeter * 0.95);
 
         // 텍스처 최적화: 기존 텍스처가 있으면 재사용, 없으면 새로 생성
         const texture = this.createScreenTexture(name, inches, ratioW, ratioH);
@@ -161,7 +156,7 @@ class MonitorFactory {
 // 2. SceneManager: 3D Scene & Selection Logic
 // ==========================================
 class SceneManager {
-    constructor(container) {
+    constructor(container, config = {}) {
         this.container = container;
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x202020);
@@ -170,7 +165,8 @@ class SceneManager {
         this.camera.position.set(0, 1000, 2000);
 
         // 렌더러 설정
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        const aaEnabled = config.aa ?? true;
+        this.renderer = new THREE.WebGLRenderer({ antialias: aaEnabled, alpha: false });
         this.renderer.setPixelRatio(1); // 고해상도 디스플레이 부하 방지 (성능 최적화)
         this.renderer.setSize(container.clientWidth, container.clientHeight);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -197,6 +193,8 @@ class SceneManager {
         this.mouse = new THREE.Vector2();
         this.monitors = []; 
         this.deskMesh = null;
+        this.ambientLight = null;
+        this.directionalLight = null;
 
         this.renderer.domElement.addEventListener('pointerdown', e => this.onPointerDown(e), { capture: true });
         
@@ -215,10 +213,17 @@ class SceneManager {
     }
 
     setupLights() {
-        this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-        const dl = new THREE.DirectionalLight(0xffffff, 1.2);
-        dl.position.set(1000, 2000, 1000);
-        this.scene.add(dl);
+        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(this.ambientLight);
+        
+        this.directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        this.directionalLight.position.set(1000, 2000, 1000);
+        this.scene.add(this.directionalLight);
+    }
+
+    setLightsVisible(visible) {
+        if (this.ambientLight) this.ambientLight.visible = visible;
+        if (this.directionalLight) this.directionalLight.visible = visible;
     }
 
     updateDesk(w, d, c) {
@@ -342,6 +347,46 @@ class SceneManager {
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     }
 
+    recreateRenderer(config) {
+        // 1. Dispose old renderer and controls
+        this.renderer.dispose();
+        this.renderer.domElement.remove();
+        this.orbitControls.dispose();
+        this.transformControls.dispose();
+
+        // 2. Create new renderer with new config
+        const aaEnabled = config.aa ?? true;
+        this.renderer = new THREE.WebGLRenderer({ antialias: aaEnabled, alpha: false });
+        this.renderer.setPixelRatio(1);
+        this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        
+        this.renderer.domElement.style.display = 'block';
+        this.renderer.domElement.style.width = '100%';
+        this.renderer.domElement.style.height = '100%';
+        this.container.appendChild(this.renderer.domElement);
+
+        // 3. Re-create controls with the new renderer's domElement
+        this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.orbitControls.enableDamping = true;
+        this.orbitControls.dampingFactor = 0.1;
+        this.orbitControls.maxPolarAngle = Math.PI / 2;
+
+        // Note: Re-creating transformControls and re-attaching to scene
+        // We need to detach from any object first.
+        if (this.transformControls.object) {
+            this.transformControls.detach();
+        }
+        this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+        this.transformControls.addEventListener('dragging-changed', (event) => {
+            this.orbitControls.enabled = !event.value;
+        });
+        this.scene.add(this.transformControls);
+
+        // 4. Re-attach event listeners for the new domElement
+        this.renderer.domElement.addEventListener('pointerdown', e => this.onPointerDown(e), { capture: true });
+    }
+
     animate(time) {
         requestAnimationFrame((t) => this.animate(t));
 
@@ -364,9 +409,14 @@ class SceneManager {
 // ==========================================
 class App {
     constructor() {
-        this.sceneManager = new SceneManager(document.getElementById('canvas-container'));
+        const params = new URLSearchParams(window.location.search);
+        const aaEnabled = params.get('aa') !== 'false'; // default to true
+
+        this.sceneManager = new SceneManager(document.getElementById('canvas-container'), { aa: aaEnabled });
         this.monitorList = [];
         this.idCounter = 0;
+        this.isResizing = false;
+        this.interactionHintEl = document.getElementById('interaction-hint');
         
         // 다국어 설정
         this.currentLang = 'ko'; // 기본값 한국어
@@ -390,7 +440,9 @@ class App {
                 curved: "커브드",
                 lock: "잠금",
                 reset: "위치 초기화",
-                remove: "삭제"
+                remove: "삭제",
+                visitRepository: "GitHub 저장소 방문",
+                interactionHint: "모니터를 클릭하여 이동 ↔ 회전 핸들 전환"
             },
             en: {
                 appTitle: "Multi-Monitor Planner",
@@ -411,22 +463,42 @@ class App {
                 curved: "Curved",
                 lock: "Lock",
                 reset: "Reset Position",
-                remove: "Remove"
+                remove: "Remove",
+                visitRepository: "Visit Repository",
+                interactionHint: "Click the monitor to toggle Move ↔ Rotate handles"
             }
         };
 
         this.initEvents();
-        this.initSidebarResize(); 
-        this.sceneManager.updateDesk(1800, 800, '#ffffff');
+        this.initSidebarResize();
+        this.initGraphicsToggles();
+        this.initSidebarToggle();
+        
+        document.getElementById('aa-check').checked = aaEnabled;
+
+        this.sceneManager.updateDesk(1600, 800, '#ffffff');
         
         setTimeout(() => {
             this.sceneManager.onResize();
         }, 0);
     }
 
+    showInteractionHint() {
+        if (this.interactionHintEl) {
+            this.interactionHintEl.textContent = this.translations[this.currentLang].interactionHint;
+            this.interactionHintEl.style.opacity = '1';
+        }
+    }
+
+    hideInteractionHint() {
+        if (this.interactionHintEl) {
+            this.interactionHintEl.style.opacity = '0';
+        }
+    }
+
     initEvents() {
         const updateDesk = () => {
-            const w = parseFloat(document.getElementById('desk-width').value) || 1800;
+            const w = parseFloat(document.getElementById('desk-width').value) || 1600;
             const d = parseFloat(document.getElementById('desk-depth').value) || 800;
             const c = document.getElementById('desk-color').value || '#ffffff';
             this.sceneManager.updateDesk(w, d, c);
@@ -460,6 +532,16 @@ class App {
                 const value = range.value;
                 val.textContent = type === 'translate' ? `${value}mm` : `${value}°`;
                 this.sceneManager.setSnap(type, enabled, value);
+
+                // 연관된 컨트롤의 비활성화 상태 업데이트
+                const parentItem = val.closest('.setting-item');
+                if (parentItem) {
+                    if (enabled) {
+                        parentItem.classList.remove('disabled');
+                    } else {
+                        parentItem.classList.add('disabled');
+                    }
+                }
             };
 
             check.addEventListener('change', updateSnap);
@@ -473,32 +555,64 @@ class App {
         this.addMonitor();
     }
 
+    initGraphicsToggles() {
+        const aaCheck = document.getElementById('aa-check');
+        aaCheck.addEventListener('change', (e) => {
+            // Recreate the renderer without reloading the page
+            this.sceneManager.recreateRenderer({ aa: e.target.checked });
+
+            // Update URL parameter without reloading for refresh persistence
+            const params = new URLSearchParams(window.location.search);
+            params.set('aa', e.target.checked);
+            window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+        });
+    }
+
+    initSidebarToggle() {
+        const app = document.getElementById('app');
+        const toggleBtn = document.getElementById('sidebar-toggle-btn');
+        if (!toggleBtn || !app) return;
+
+        toggleBtn.addEventListener('click', () => {
+            app.classList.toggle('sidebar-collapsed');
+            // Give time for CSS transition to start before resizing canvas
+            setTimeout(() => this.sceneManager.onResize(), 360);
+        });
+    }
+
     initSidebarResize() {
+        const app = document.getElementById('app');
         const sidebar = document.getElementById('sidebar');
         const resizer = document.getElementById('resizer');
-        let isResizing = false;
 
-        if(!resizer) return;
+        if(!resizer || !sidebar || !app) return;
+        
+        // Set initial CSS variable for width from the inline style or CSS
+        const initialWidth = sidebar.offsetWidth;
+        document.documentElement.style.setProperty('--sidebar-width', `${initialWidth}px`);
+        sidebar.style.width = 'var(--sidebar-width)'; // Make sure it follows the variable
 
         resizer.addEventListener('mousedown', (e) => {
-            isResizing = true;
+            if (app.classList.contains('sidebar-collapsed')) return;
+            this.isResizing = true;
             document.body.style.cursor = 'col-resize';
             e.preventDefault();
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (!isResizing) return;
-            let newWidth = e.clientX;
-            if (newWidth < 280) newWidth = 280;
-            if (newWidth > 600) newWidth = 600;
+            if (!this.isResizing || app.classList.contains('sidebar-collapsed')) return;
             
-            sidebar.style.width = `${newWidth}px`;
+            const newWidth = Math.max(280, Math.min(e.clientX, 600));
+            
+            // Update CSS variable for sidebar width, app padding and button positioning
+            document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+
             this.sceneManager.onResize();
         });
 
         document.addEventListener('mouseup', () => {
-            if (isResizing) {
-                isResizing = false;
+            if (this.isResizing) {
+                this.isResizing = false;
                 document.body.style.cursor = 'default';
             }
         });
@@ -549,6 +663,11 @@ class App {
 
         // 모니터 리스트 재생성 (동적 텍스트 업데이트)
         this.renderList();
+
+        // 상호작용 힌트 텍스트 업데이트 (보이는 경우)
+        if (this.interactionHintEl && this.interactionHintEl.style.opacity === '1') {
+            this.showInteractionHint(); // 텍스트만 업데이트하기 위해 다시 호출
+        }
     }
 
     renderList() {
@@ -670,12 +789,17 @@ class App {
         const config = this.monitorList.find(m => m.id === id);
         if (!config) return;
 
-        let parsed = parseFloat(value);
-        if (key === 'inches') parsed = Math.max(1, parsed || 27);
-        if (key === 'ratioW') parsed = Math.max(0.1, parsed || 16);
-        if (key === 'ratioH') parsed = Math.max(0.1, parsed || 9);
-        
-        config[key] = parsed;
+        const parsed = parseFloat(value);
+
+        if (key === 'inches') {
+            config[key] = Math.max(1, parsed || 27);
+        } else if (key === 'ratioW') {
+            config[key] = Math.max(0.1, parsed || 16);
+        } else if (key === 'ratioH') {
+            config[key] = Math.max(0.1, parsed || 9);
+        } else {
+            config[key] = parsed;
+        }
 
         this.refresh3D(config);
     }
@@ -704,13 +828,10 @@ class App {
 
     refresh3D(config) {
         const oldObj = this.sceneManager.monitors.find(m => m.userData.id === config.id);
-        let prevTransform = null;
-        if (oldObj) {
-            prevTransform = {
-                position: oldObj.position.clone(),
-                rotation: oldObj.rotation.clone()
-            };
-        }
+        const prevTransform = oldObj ? {
+            position: oldObj.position.clone(),
+            rotation: oldObj.rotation.clone()
+        } : null;
         this.sceneManager.addOrUpdateMonitor(config, prevTransform);
         this.validateMonitor(config.id);
     }
@@ -721,14 +842,7 @@ class App {
         
         if (!config) return;
 
-        let isValid = true;
-        if (!monitor) isValid = false;
-        if (isValid) {
-            const { x, y, z } = monitor.position;
-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-                isValid = false;
-            }
-        }
+        const isValid = monitor && Number.isFinite(monitor.position.x) && Number.isFinite(monitor.position.y) && Number.isFinite(monitor.position.z);
 
         if (!isValid) {
             console.warn(`Monitor ${id} rendering issue detected. Resetting.`);
@@ -750,6 +864,51 @@ class App {
         this.renderList();
     }
 }
+
+// Modify SceneManager.onPointerDown to control the hint
+SceneManager.prototype.onPointerDown = (function (originalOnPointerDown) {
+    return function (event) {
+        if (this.transformControls.dragging || this.transformControls.axis) return;
+
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        
+        const intersects = this.raycaster.intersectObjects(this.monitors, true);
+
+        if (intersects.length > 0) {
+            for (let i = 0; i < intersects.length; i++) {
+                let target = intersects[i].object;
+
+                while (target && target !== this.scene && (!target.userData || !target.userData.isMonitor)) {
+                    target = target.parent;
+                }
+
+                if (target && target.userData && target.userData.isMonitor) {
+                    if (target.userData.locked) {
+                        window.appInstance.hideInteractionHint(); // 잠긴 모니터는 힌트 숨김
+                        continue;
+                    }
+
+                    if (this.transformControls.object === target) {
+                        const currentMode = this.transformControls.getMode();
+                        this.transformControls.setMode(currentMode === 'translate' ? 'rotate' : 'translate');
+                    } else {
+                        this.selectMonitor(target);
+                        this.transformControls.setMode('translate');
+                    }
+                    window.appInstance.showInteractionHint(); // 모니터 선택 또는 모드 전환 시 힌트 표시
+                    return;
+                }
+            }
+        }
+        
+        this.transformControls.detach();
+        window.appInstance.hideInteractionHint(); // 빈 공간 클릭 시 힌트 숨김
+    };
+})(SceneManager.prototype.onPointerDown);
 
 window.updateMonitor = (id, key, val) => window.appInstance.updateMonitor(id, key, val);
 window.setCurvatureType = (id, type) => window.appInstance.setCurvatureType(id, type);

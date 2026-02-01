@@ -21,9 +21,7 @@
         <!-- 사이드바 -->
         <div id="sidebar">
             <div id="resizer"></div> <!-- 리사이즈 핸들 -->
-
-            <!-- 고정 영역: 제목, 데스크, 설정 -->
-            <div id="sidebar-fixed">
+            <div id="sidebar-content">
                 <h1 id="app-title" data-i18n="appTitle">Multi-Monitor Planner</h1>
                 
                 <div class="divider"></div> <!-- 구분선 -->
@@ -81,14 +79,24 @@
                         <span class="setting-value" id="snap-rotate-val">30°</span>
                     </div>
                 </div>
+
+                <!-- Graphics Settings -->
+                <div class="control-group" style="margin-top: 15px;">
+                    <label>Graphics</label>
+                    <div class="setting-item">
+                        <input type="checkbox" id="aa-check" checked>
+                        <span class="setting-label" title="Smooths jagged edges, but costs performance. Requires refresh.">Anti-Aliasing (AA)</span>
+                    </div>
+                </div>
+                
+                <div class="control-group" style="margin-top: 25px;">
+                    <a href="https://github.com/Gging-Ggang/Multi-Monitor-Planner" target="_blank" rel="noopener noreferrer" class="repository-link" data-i18n="visitRepository">Visit Repository</a>
+                </div>
                 
                 <div class="divider"></div> <!-- 구분선 -->
                 
                 <h2 data-i18n="monitors">Monitors</h2>
-            </div>
 
-            <!-- 스크롤 영역: 모니터 리스트 -->
-            <div id="monitor-scroll-area">
                 <div id="monitor-list">
                     <!-- JS로 아이템 생성됨 -->
                 </div>
@@ -97,8 +105,17 @@
             </div>
         </div>
 
+        <!-- Sidebar Toggle Button -->
+        <button id="sidebar-toggle-btn" title="Toggle Sidebar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
+            </svg>
+        </button>
+
         <!-- 3D 캔버스 -->
-        <div id="canvas-container"></div>
+        <div id="canvas-container">
+            <div id="interaction-hint"></div>
+        </div>
     </div>
 
     <script type="module" src="script.js"></script>
